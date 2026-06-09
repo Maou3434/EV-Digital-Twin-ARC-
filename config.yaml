@@ -1,0 +1,43 @@
+# Config file for Thermal Battery Digital Twin PINN
+
+paths:
+  baseline_dir: "SimuLink Datasets/baseline"
+  ambient_dir: "SimuLink Datasets/ambient"
+  summary_stats: "results/summary_statistics.csv"
+  processed_dataset: "datasets/processed_state_space.csv"
+  results_dir: "results"
+
+training:
+  random_seed: 42
+  train_split: 0.8
+  device: "cuda" # cuda or cpu, will default to cuda if available
+
+baseline_mlp:
+  input_dim: 6
+  hidden_dim: 64
+  epochs: 50
+  batch_size: 1024
+  learning_rate: 0.001
+  model_path: "results/baseline_model.pt"
+  metrics_path: "results/baseline_metrics.json"
+  predictions_path: "results/baseline_predictions.csv"
+
+pinn:
+  input_dim: 6
+  hidden_dim: 64
+  epochs: 100
+  batch_size: 1024
+  learning_rate: 0.001
+  lambda_physics: 0.1
+  model_path: "results/pinn_model.pt"
+  metrics_path: "results/pinn_metrics.json"
+  loss_curve_path: "results/loss_curve.png"
+  prediction_path: "results/prediction_vs_truth.png"
+  residual_path: "results/residual_distribution.png"
+  trajectory_path: "results/temperature_trajectory.png"
+  error_path: "results/error_distribution.png"
+
+physics:
+  m: 4.0         # Battery pack mass in kg
+  Cp: 1000.0     # Specific heat in J/kg/K
+  initial_hA: 0.1 # Initial guess for convection heat transfer coefficient hA in W/K
