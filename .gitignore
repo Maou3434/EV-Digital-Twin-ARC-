@@ -1,0 +1,97 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tosca/
+.pytest_cache/
+.mypy_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.run/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Project-specific: Datasets
+SimuLink Datasets/
+datasets/
+
+# Project-specific: Model weights, predictions, metrics, and generated plots
+# We avoid ignoring the entire results directory so report documents (like markdown files) remain tracked.
+results/*.pt
+results/*.csv
+results/*.json
+results/*.png
+
+# MATLAB / Simulink compilation and cache artifacts
+*.slxc
+*.mexw64
+*.mexa64
+*.mexmaci64
+slprj/
+
+# Simulink local dataset and testing folders
+SimuLink/PINN_Dataset/
+SimuLink/PINN_Ambient_Test/
+
