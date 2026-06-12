@@ -93,7 +93,8 @@ def train_baseline(config_path="config.yaml"):
     
     # 7. Training Loop
     epochs = mlp_cfg['epochs']
-    print(f"Starting Baseline MLP training for {epochs} epochs...")
+    noise_std = train_cfg.get('noise_std', 0.0)
+    print(f"Starting Baseline MLP training for {epochs} epochs (noise_std = {noise_std})...")
     
     model.train()
     for epoch in range(1, epochs + 1):
@@ -101,8 +102,16 @@ def train_baseline(config_path="config.yaml"):
         for batch_X, batch_y in train_loader:
             batch_X, batch_y = batch_X.to(device), batch_y.to(device)
             
+            # Input Noise Injection: Add Gaussian noise to Temperature (index 0) during training
+            if noise_std > 0.0:
+                batch_X_train = batch_X.clone()
+                noise = torch.randn_like(batch_X_train[:, 0]) * noise_std
+                batch_X_train[:, 0] += noise
+            else:
+                batch_X_train = batch_X
+            
             optimizer.zero_grad()
-            pred = model(batch_X)
+            pred = model(batch_X_train)
             loss = criterion(pred, batch_y)
             loss.backward()
             optimizer.step()

@@ -4,9 +4,9 @@ A quantitative comparison between the conventional baseline Multi-Layer Perceptr
 
 | Metric | Baseline MLP (Static) | Physics-Informed NN (PINN) |
 | :--- | :---: | :---: |
-| **MAE (K)** | 0.00005 | 0.00010 |
-| **RMSE (K)** | 0.00006 | 0.00012 |
-| **RÂ² Score** | 1.00000 | 1.00000 |
+| **MAE (K)** | 0.00003 | 0.00002 |
+| **RMSE (K)** | 0.00003 | 0.00002 |
+| **R² Score** | 1.00000 | 1.00000 |
 
 ### Trainable Physical Properties Learned by PINN
 * **Convective Heat Transfer Coefficient ($hA$):** 0.00001 W/K

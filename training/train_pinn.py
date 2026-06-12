@@ -126,7 +126,8 @@ def train_pinn(config_path="config.yaml"):
     # 7. PINN Training Loop
     epochs = pinn_cfg['epochs']
     lambda_physics = pinn_cfg['lambda_physics']
-    print(f"Starting PINN training for {epochs} epochs (lambda_physics = {lambda_physics})...")
+    noise_std = train_cfg.get('noise_std', 0.0)
+    print(f"Starting PINN training for {epochs} epochs (lambda_physics = {lambda_physics}, noise_std = {noise_std})...")
     
     loss_history = {
         "epoch": [],
@@ -145,10 +146,18 @@ def train_pinn(config_path="config.yaml"):
         for batch_X, batch_y, batch_dt in train_loader:
             batch_X, batch_y, batch_dt = batch_X.to(device), batch_y.to(device), batch_dt.to(device)
             
+            # Input Noise Injection: Add Gaussian noise to Temperature (index 0) during training
+            if noise_std > 0.0:
+                batch_X_train = batch_X.clone()
+                noise = torch.randn_like(batch_X_train[:, 0]) * noise_std
+                batch_X_train[:, 0] += noise
+            else:
+                batch_X_train = batch_X
+            
             optimizer.zero_grad()
             
             # Predict Delta_T in scaled space
-            pred_y_scaled = model(batch_X)
+            pred_y_scaled = model(batch_X_train)
             
             # A. Calculate Data Loss (MSE in scaled space)
             data_loss = data_criterion(pred_y_scaled, batch_y)
@@ -158,7 +167,8 @@ def train_pinn(config_path="config.yaml"):
             Delta_T_phys = pred_y_scaled * scaler_y_scale + scaler_y_mean
             
             # Reconstruction of input features in physical units for physics computation
-            T_t_physical = batch_X[:, 0] * scaler_T_scale + scaler_T_mean
+            # We use batch_X_train[:, 0] (including injected noise) for consistency
+            T_t_physical = batch_X_train[:, 0] * scaler_T_scale + scaler_T_mean
             PowerLoss_physical = batch_X[:, 4] * scaler_P_scale + scaler_P_mean
             AmbientTemp_physical = batch_X[:, 5] * scaler_Tamb_scale + scaler_Tamb_mean
             

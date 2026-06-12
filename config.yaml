@@ -11,6 +11,7 @@ training:
   random_seed: 42
   train_split: 0.8
   device: "cuda" # cuda or cpu, will default to cuda if available
+  noise_std: 0.05
 
 baseline_mlp:
   input_dim: 6
@@ -38,6 +39,6 @@ pinn:
   error_path: "results/error_distribution.png"
 
 physics:
-  m: 4.0         # Battery pack mass in kg
-  Cp: 1000.0     # Specific heat in J/kg/K
+  m: 1.0         # Battery pack mass in kg (adjusted to match dataset effective capacity)
+  Cp: 900.0     # Specific heat in J/kg/K (adjusted to match dataset effective capacity)
   initial_hA: 0.1 # Initial guess for convection heat transfer coefficient hA in W/K
