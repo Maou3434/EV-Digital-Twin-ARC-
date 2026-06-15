@@ -7,13 +7,13 @@ class BaselineMLP(nn.Module):
     temperature delta prediction based on standard electrothermal features.
     
     Architecture:
-    - Input: 6 features (Temperature_t, Current, Voltage, SOC, PowerLoss, AmbientTemp)
+    - Input: 7 features (Temperature_C, Current_A, Voltage_V, SOC_pct, PowerLoss_W, AmbientTemp_C, MassScale)
     - Hidden Layer 1: 64 neurons + ReLU
     - Hidden Layer 2: 64 neurons + ReLU
     - Hidden Layer 3: 32 neurons + ReLU
     - Output Layer: 1 neuron (predicted Temperature Delta)
     """
-    def __init__(self, input_dim=6, hidden_dim=64):
+    def __init__(self, input_dim=7, hidden_dim=64):
         super(BaselineMLP, self).__init__()
         
         self.network = nn.Sequential(

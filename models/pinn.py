@@ -1,24 +1,26 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
 
 class PhysicsInformedNN(nn.Module):
     """
     Physics-Informed Neural Network (PINN) for dynamic battery temperature prediction.
     
     Architecture:
-    - Input: 6 features (Temperature_t, Current_t, Voltage_t, SOC_t, PowerLoss_t, AmbientTemp_t)
+    - Input: 7 features (Temperature_C, Current_A, Voltage_V, SOC_pct, PowerLoss_W, AmbientTemp_C, MassScale)
     - Hidden Layer 1: 64 neurons + ReLU
     - Hidden Layer 2: 64 neurons + ReLU
     - Hidden Layer 3: 32 neurons + ReLU
-    - Output Layer: 1 neuron (predicted Temperature at t+1)
+    - Output Layer: 1 neuron (predicted Temperature Delta)
     
     Trainable Physical Parameters:
-    - hA: Convective heat transfer coefficient (Newton cooling), initialized at 0.1 W/K.
+    - hA: Convective heat transfer coefficient, initialized at 0.1 W/K, constrained positive via softplus.
     """
-    def __init__(self, input_dim=6, hidden_dim=64, m=4.0, Cp=1000.0, initial_hA=0.1):
+    def __init__(self, input_dim=7, hidden_dim=64, mCp=900.0, initial_hA=0.1):
         super(PhysicsInformedNN, self).__init__()
         
-        self.mCp = m * Cp # Thermal capacity in J/K (4000 J/K by default)
+        self.mCp = mCp # Base thermal capacity (J/K)
         
         # Dense network layers
         self.network = nn.Sequential(
@@ -31,57 +33,53 @@ class PhysicsInformedNN(nn.Module):
             nn.Linear(32, 1)
         )
         
-        # Trainable physical parameter hA. We define it as a parameter so that the
-        # optimizer learns it alongside network weights.
-        self.hA_param = nn.Parameter(torch.tensor(initial_hA, dtype=torch.float32, requires_grad=True))
+        # Constrain hA positive via softplus. 
+        # To start hA at exactly initial_hA, we initialize self.hA_raw to log(exp(initial_hA) - 1)
+        raw_initial = np.log(np.exp(initial_hA) - 1.0)
+        self.hA_raw = nn.Parameter(torch.tensor(raw_initial, dtype=torch.float32, requires_grad=True))
         
     def forward(self, x):
         """
-        Predicts the battery temperature at the next time step t+1.
-        x: tensor of shape (batch_size, 6) containing:
-           [Temperature_t, Current_t, Voltage_t, SOC_t, PowerLoss_t, AmbientTemp_t]
+        Predicts the battery temperature delta over the time step.
+        x: tensor of shape (batch_size, 7) containing the scaled features.
         """
         return self.network(x)
         
     def get_hA(self):
         """
-        Helper method to return positive hA by constraining it (e.g. using ReLU or clamp
-        to prevent negative heat transfer coefficients, which is physically impossible).
+        Helper method to return positive convective heat transfer coefficient.
+        Uses F.softplus to enforce positivity instead of clipping.
         """
-        return torch.clamp(self.hA_param, min=1e-5)
+        return F.softplus(self.hA_raw)
         
-    def compute_residual(self, x, y_pred, dt):
+    def compute_residual(self, x_phys, Delta_T_pred_phys, dt):
         """
         Computes the physics residual of the governing lumped thermal equation in K/s:
-        Residual = dTdt_pred - (PowerLoss - Q_loss) / mCp = 0
+        dT/dt = (PowerLoss - Q_loss) / (mCp * MassScale)
+        Residual = dTdt_pred - (PowerLoss - Q_loss) / (mCp * MassScale)
         
         Inputs:
-        - x: network inputs at time t (batch_size, 6) in physical units
-          - x[:, 0]: Temperature_t
-          - x[:, 4]: PowerLoss_t
-          - x[:, 5]: AmbientTemp_t
-        - y_pred: network prediction for Delta_T_t (batch_size, 1) in physical units
-        - dt: time step size (batch_size, 1)
+        - x_phys: inputs at time t in PHYSICAL units (batch_size, 7)
+          - x_phys[:, 0:1]: Temperature_C
+          - x_phys[:, 4:5]: PowerLoss_W
+          - x_phys[:, 5:6]: AmbientTemp_C
+          - x_phys[:, 6:7]: MassScale
+        - Delta_T_pred_phys: predicted temperature delta in physical units (batch_size, 1)
+        - dt: time step size in seconds (batch_size, 1)
         """
-        T_t = x[:, 0]
-        PowerLoss = x[:, 4]
-        AmbientTemp = x[:, 5]
+        T_t = x_phys[:, 0:1]
+        PowerLoss = x_phys[:, 4:5]
+        AmbientTemp = x_phys[:, 5:6]
+        MassScale = x_phys[:, 6:7]
         
-        Delta_T_pred = y_pred.squeeze()
-        dt = dt.squeeze()
+        # Rate of change: dTdt_pred = Delta_T_pred_phys / dt
+        dTdt_pred = Delta_T_pred_phys / dt
         
-        # Reconstruct next temperature: T_pred = T_t + Delta_T_pred
-        T_pred_t1 = T_t + Delta_T_pred
-        
-        # Rate of change: dTdt_pred = Delta_T_pred / dt
-        dTdt_pred = Delta_T_pred / dt
-        
-        # Newton cooling loss Q_loss = hA * (T_pred_t1 - T_amb)
+        # Newton cooling loss Q_loss = hA * (T_t - T_amb)
         hA = self.get_hA()
-        Q_loss = hA * (T_pred_t1 - AmbientTemp)
+        Q_loss = hA * (T_t - AmbientTemp)
         
-        # Scale the equation by dividing by mCp to avoid massive numerical gradients.
-        # Residual = dTdt_pred - (PowerLoss - Q_loss) / mCp (both sides in Kelvin/second)
-        residual = dTdt_pred - (PowerLoss - Q_loss) / self.mCp
+        # Governing differential equation residual
+        residual = dTdt_pred - (PowerLoss - Q_loss) / (self.mCp * MassScale)
         
         return residual
