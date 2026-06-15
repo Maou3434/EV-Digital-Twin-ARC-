@@ -76,6 +76,7 @@ Thumbs.db
 # Project-specific: Datasets
 SimuLink Datasets/
 datasets/
+!datasets/file_lengths.json
 
 # Project-specific: Model weights, predictions, metrics, and generated plots
 # We avoid ignoring the entire results directory so report documents (like markdown files) remain tracked.
@@ -94,4 +95,5 @@ slprj/
 # Simulink local dataset and testing folders
 SimuLink/PINN_Dataset/
 SimuLink/PINN_Ambient_Test/
+SimuLink_Datasets_Obsolete/
 
