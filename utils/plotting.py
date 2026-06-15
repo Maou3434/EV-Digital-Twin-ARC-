@@ -1,7 +1,6 @@
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 # Define aesthetic color scheme
 COLOR_TRUE = "#1D3557"    # Sleek dark navy for ground truth
@@ -9,7 +8,7 @@ COLOR_BASE = "#E63946"    # Crimson red for baseline model
 COLOR_PINN = "#457B9D"    # Steel blue for PINN model
 COLOR_RESID = "#A8DADC"   # Pale cyan for residuals
 COLOR_TEXT = "#2B2D42"    # Dark grey for text
-COLOR_GRID = "#F1FAEE"    # Light minty white for grid lines
+
 
 def set_style():
     plt.rcParams['figure.facecolor'] = 'white'
