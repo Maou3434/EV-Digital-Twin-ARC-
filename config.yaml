@@ -1,44 +1,34 @@
-# Config file for Thermal Battery Digital Twin PINN
+# Configuration for EV Battery Thermal Digital Twin PINN Pipeline
 
 paths:
-  baseline_dir: "SimuLink Datasets/baseline"
-  ambient_dir: "SimuLink Datasets/ambient"
+  dataset_dir: "SimuLink/PINN_Dataset"
+  scalers_dir: "datasets/scalers"
   summary_stats: "results/summary_statistics.csv"
-  processed_dataset: "datasets/processed_state_space.csv"
-  results_dir: "results"
+  results_baseline_dir: "results/baseline"
+  results_pinn_dir: "results/pinn"
 
 training:
   random_seed: 42
-  train_split: 0.8
-  device: "cuda" # cuda or cpu, will default to cuda if available
-  noise_std: 0.05
+  device: "cuda" # Default device (will fall back to cpu if not available)
+  noise_std: 0.05 # Standard deviation of Gaussian noise added to Temperature_C
+  gradient_clip: 1.0 # Gradient clipping threshold
+  early_stopping_patience: 10 # Patience for early stopping
 
 baseline_mlp:
-  input_dim: 6
-  hidden_dim: 64
-  epochs: 50
-  batch_size: 1024
-  learning_rate: 0.001
-  model_path: "results/baseline_model.pt"
-  metrics_path: "results/baseline_metrics.json"
-  predictions_path: "results/baseline_predictions.csv"
-
-pinn:
-  input_dim: 6
+  input_dim: 7 # ["Temperature_C", "Current_A", "Voltage_V", "SOC_pct", "PowerLoss_W", "AmbientTemp_C", "MassScale"]
   hidden_dim: 64
   epochs: 100
-  batch_size: 1024
+  batch_size: 8192
   learning_rate: 0.001
-  lambda_physics: 0.1
-  model_path: "results/pinn_model.pt"
-  metrics_path: "results/pinn_metrics.json"
-  loss_curve_path: "results/loss_curve.png"
-  prediction_path: "results/prediction_vs_truth.png"
-  residual_path: "results/residual_distribution.png"
-  trajectory_path: "results/temperature_trajectory.png"
-  error_path: "results/error_distribution.png"
+
+pinn:
+  input_dim: 7 # Same features
+  hidden_dim: 64
+  epochs: 100
+  batch_size: 8192
+  learning_rate: 0.001
+  lambda_physics: 0.01
 
 physics:
-  m: 1.0         # Battery pack mass in kg (adjusted to match dataset effective capacity)
-  Cp: 900.0     # Specific heat in J/kg/K (adjusted to match dataset effective capacity)
-  initial_hA: 0.1 # Initial guess for convection heat transfer coefficient hA in W/K
+  mCp: 900.0 # Base thermal capacity (J/K)
+  initial_hA: 0.1 # Initial convection coefficient (W/K)
