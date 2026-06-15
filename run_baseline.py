@@ -490,7 +490,4 @@ def main():
     save()
 
 if __name__ == "__main__":
-    # We do NOT execute main() directly. The user will run the script.
-    # To demonstrate structure, we log instructions on how to run.
-    print("EV Battery Thermal Digital Twin - Baseline MLP Training Script prepared.")
-    print("Run this script with: python run_baseline.py")
+    main()

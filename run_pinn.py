@@ -578,5 +578,4 @@ def main():
     save()
 
 if __name__ == "__main__":
-    print("EV Battery Thermal Digital Twin - Physics-Informed Neural Network Script prepared.")
-    print("Run this script with: python run_pinn.py")
+    main()
