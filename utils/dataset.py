@@ -16,6 +16,26 @@ FEATURES = [
 ]
 TARGET = "Delta_T"
 
+def preprocess_df(df):
+    """Applies the standard filtering and preprocessing steps to the dataframe."""
+    # Monotonicity check and fix
+    if not df["Time_s"].is_monotonic_increasing:
+        df = df.sort_values(by="Time_s").reset_index(drop=True)
+        
+    # Add shift target columns
+    df["Temperature_next"] = df["Temperature_C"].shift(-1)
+    df["Time_next"] = df["Time_s"].shift(-1)
+    
+    # Calculate Delta_T and dt
+    df["dt"] = df["Time_next"] - df["Time_s"]
+    df["Delta_T"] = df["Temperature_next"] - df["Temperature_C"]
+    
+    # Drop rows with NaN or small/invalid dt to prevent numerical derivative issues
+    df = df.dropna().reset_index(drop=True)
+    df = df[df["dt"] >= 0.001].reset_index(drop=True)
+    return df
+
+
 class ThermalDataset(Dataset):
     """
     Lazy-loading PyTorch Dataset for large EV battery electrothermal datasets.
@@ -29,7 +49,7 @@ class ThermalDataset(Dataset):
         # Lengths caching
         cache_dir = "datasets"
         os.makedirs(cache_dir, exist_ok=True)
-        self.cache_path = os.path.join(cache_dir, "file_lengths.json")
+        self.cache_path = os.path.join(cache_dir, "file_lengths_v2.json")
         
         file_lengths_dict = {}
         if cache_lengths and os.path.exists(self.cache_path):
@@ -49,9 +69,10 @@ class ThermalDataset(Dataset):
             if norm_path in file_lengths_dict:
                 self.file_lengths.append(file_lengths_dict[norm_path])
             else:
-                # Fast read of only Time_s column to get row count
-                df = pd.read_csv(path, usecols=["Time_s"])
-                length = len(df) - 1 # Dropping last row since it has no next state
+                # Read CSV and preprocess to count exact length
+                df = pd.read_csv(path)
+                df = preprocess_df(df)
+                length = len(df)
                 self.file_lengths.append(length)
                 file_lengths_dict[norm_path] = length
                 updated_cache = True
@@ -60,10 +81,20 @@ class ThermalDataset(Dataset):
             with open(self.cache_path, "w") as f:
                 json.dump(file_lengths_dict, f, indent=4)
                 
-        self.cumulative_lengths = [0] + list(np.cumsum(self.file_lengths))
+        self.cumulative_lengths = np.array(
+            [0] + list(np.cumsum(self.file_lengths)),
+            dtype=np.int64
+        )
         self.total_length = self.cumulative_lengths[-1]
         print(f"Dataset initialized with total samples: {self.total_length:,}")
         
+        # Precompute index-to-file mapping for O(1) file lookup
+        self.idx_to_file = np.empty(self.total_length, dtype=np.int16)
+        for file_idx in range(len(self.file_paths)):
+            start = self.cumulative_lengths[file_idx]
+            end = self.cumulative_lengths[file_idx + 1]
+            self.idx_to_file[start:end] = file_idx
+            
         # Cache for currently loaded file to avoid I/O thrashing
         self.current_file_idx = -1
         self.current_data = None
@@ -79,21 +110,7 @@ class ThermalDataset(Dataset):
         path = self.file_paths[file_idx]
         df = pd.read_csv(path)
         
-        # Monotonicity check and fix
-        if not df["Time_s"].is_monotonic_increasing:
-            df = df.sort_values(by="Time_s").reset_index(drop=True)
-            
-        # Add shift target columns
-        df["Temperature_next"] = df["Temperature_C"].shift(-1)
-        df["Time_next"] = df["Time_s"].shift(-1)
-        
-        # Calculate Delta_T and dt
-        df["dt"] = df["Time_next"] - df["Time_s"]
-        df["Delta_T"] = df["Temperature_next"] - df["Temperature_C"]
-        
-        # Drop rows with NaN or small/invalid dt to prevent numerical derivative issues
-        df = df.dropna().reset_index(drop=True)
-        df = df[df["dt"] >= 0.001].reset_index(drop=True)
+        df = preprocess_df(df)
         
         # Features and target matrices
         features = df[FEATURES].values
@@ -118,7 +135,7 @@ class ThermalDataset(Dataset):
             raise IndexError("Index out of bounds")
             
         # Find which file index idx belongs to
-        file_idx = np.searchsorted(self.cumulative_lengths, idx, side="right") - 1
+        file_idx = int(self.idx_to_file[idx])
         local_idx = idx - self.cumulative_lengths[file_idx]
         
         self._load_file(file_idx)
@@ -127,7 +144,11 @@ class ThermalDataset(Dataset):
         y = self.current_data["targets"][local_idx]
         dt = self.current_data["dts"][local_idx]
         
-        return torch.tensor(x), torch.tensor(y), torch.tensor(dt)
+        return (
+            torch.from_numpy(x),
+            torch.from_numpy(y),
+            torch.from_numpy(dt)
+        )
 
 
 class FileGroupedBatchSampler(Sampler):
@@ -143,33 +164,19 @@ class FileGroupedBatchSampler(Sampler):
         self.shuffle = shuffle
         
     def __iter__(self):
-        batches = []
-        file_indices_list = []
-        
-        for file_idx in range(len(self.dataset.file_paths)):
-            start = self.dataset.cumulative_lengths[file_idx]
-            end = self.dataset.cumulative_lengths[file_idx + 1]
-            indices = np.arange(start, end)
-            if self.shuffle:
-                np.random.shuffle(indices)
-            file_indices_list.append(indices)
-            
         file_order = list(range(len(self.dataset.file_paths)))
         if self.shuffle:
             np.random.shuffle(file_order)
             
         for file_idx in file_order:
-            indices = file_indices_list[file_idx]
-            for i in range(0, len(indices), self.batch_size):
-                batches.append(indices[i : i + self.batch_size].tolist())
+            start = self.dataset.cumulative_lengths[file_idx]
+            end = self.dataset.cumulative_lengths[file_idx + 1]
+            indices = np.arange(start, end)
+            if self.shuffle:
+                np.random.shuffle(indices)
                 
-        # Optional: We shuffle the list of batches. 
-        # Note: Shuffling the batches globally introduces minor file switches, 
-        # but is much better than shuffling individual indices. 
-        # To maintain STRICT zero-thrashing (at most 1 file loaded at a time),
-        # we can just yield the batches file-by-file (i.e. do not shuffle the batch list itself).
-        # This is the cleanest and fastest implementation.
-        return iter(batches)
+            for i in range(0, len(indices), self.batch_size):
+                yield indices[i : i + self.batch_size].tolist()
         
     def __len__(self):
         total_batches = 0

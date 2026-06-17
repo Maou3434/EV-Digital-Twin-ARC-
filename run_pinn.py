@@ -110,12 +110,24 @@ def train():
     print("Loading training dataset...")
     train_dataset = ThermalDataset(_train_paths, _scaler_X, _scaler_y)
     train_sampler = FileGroupedBatchSampler(train_dataset, batch_size=pinn_cfg['batch_size'], shuffle=True)
-    train_loader = DataLoader(train_dataset, batch_sampler=train_sampler, num_workers=0)
+    train_loader = DataLoader(
+        train_dataset,
+        batch_sampler=train_sampler,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True
+    )
     
     print("Loading validation dataset...")
     val_dataset = ThermalDataset(_val_paths, _scaler_X, _scaler_y)
     val_sampler = FileGroupedBatchSampler(val_dataset, batch_size=pinn_cfg['batch_size'], shuffle=False)
-    val_loader = DataLoader(val_dataset, batch_sampler=val_sampler, num_workers=0)
+    val_loader = DataLoader(
+        val_dataset,
+        batch_sampler=val_sampler,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True
+    )
     
     # 2. Instantiate Model, Optimizer, Mixed Precision Scaler
     _model = PhysicsInformedNN(
@@ -127,7 +139,7 @@ def train():
     
     criterion = nn.MSELoss()
     optimizer = optim.Adam(_model.parameters(), lr=pinn_cfg['learning_rate'])
-    grad_scaler = torch.cuda.amp.GradScaler()
+    grad_scaler = torch.amp.GradScaler('cuda')
     
     # 3. Setup Noise std and scaler standard dev of Temperature_C to inject noise in physical space
     noise_std = train_cfg['noise_std']
@@ -161,14 +173,26 @@ def train():
     
     _hA_history = []
     
+    # Measure first batch loading time
+    import time
+    print("Measuring first batch load time...")
+    start_time = time.time()
+    _ = next(iter(train_loader))
+    print(f"First batch load time: {time.time() - start_time:.2f}s")
+    
     for epoch in range(1, epochs + 1):
+        print(f"Starting epoch {epoch}")
         _model.train()
         train_loss = 0.0
         train_d_loss = 0.0
         train_p_loss = 0.0
         train_count = 0
         
-        for batch_X, batch_y, batch_dt in train_loader:
+        for i, (batch_X, batch_y, batch_dt) in enumerate(train_loader):
+            if i == 0:
+                print("First batch loaded")
+            if i % 100 == 0:
+                print(f"Epoch {epoch} Batch {i}/{len(train_loader)}")
             batch_X, batch_y, batch_dt = batch_X.to(_device), batch_y.to(_device), batch_dt.to(_device)
             
             # Inject noise on Temperature_C (index 0) in scaled equivalent of physical scale
@@ -182,7 +206,7 @@ def train():
             optimizer.zero_grad()
             
             # Autocast mixed precision
-            with torch.cuda.amp.autocast(enabled=(_device.type == "cuda")):
+            with torch.amp.autocast('cuda', enabled=(_device.type == "cuda")):
                 pred_y_scaled = _model(batch_X_train)
                 
                 # A. Data Loss (scaled space)
@@ -290,7 +314,13 @@ def evaluate():
     _model.eval()
     test_dataset = ThermalDataset(_test_paths, _scaler_X, _scaler_y)
     test_sampler = FileGroupedBatchSampler(test_dataset, batch_size=_config['pinn']['batch_size'], shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_sampler=test_sampler, num_workers=0)
+    test_loader = DataLoader(
+        test_dataset,
+        batch_sampler=test_sampler,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True
+    )
     
     all_preds = []
     all_targets = []
