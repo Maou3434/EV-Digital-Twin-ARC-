@@ -269,9 +269,9 @@ def main():
                 train_ae += torch.sum(torch.abs(pred - batch_y)).item()
                 train_count += n
                 
-                # Log step progress every 1 second
+                # Log step progress every 30 seconds
                 current_time = time.time()
-                if current_time - last_log_time >= 1.0:
+                if current_time - last_log_time >= 30.0:
                     elapsed = current_time - epoch_train_start
                     interval_elapsed = current_time - last_log_time
                     interval_samples = train_count - last_log_count
