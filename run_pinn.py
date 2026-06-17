@@ -251,6 +251,9 @@ def main():
             train_count = 0
             
             epoch_train_start = time.time()
+            last_log_time = epoch_train_start
+            last_log_count = 0
+            
             for i, (batch_X, batch_y, batch_dt) in enumerate(train_loader):
                 batch_X = batch_X.to(device, non_blocking=True)
                 batch_y = batch_y.to(device, non_blocking=True)
@@ -296,6 +299,18 @@ def main():
                 train_d_loss += data_loss.item() * n
                 train_p_loss += physics_loss.item() * n
                 train_count += n
+                
+                # Log step progress every 1 second
+                current_time = time.time()
+                if current_time - last_log_time >= 1.0:
+                    elapsed = current_time - epoch_train_start
+                    interval_elapsed = current_time - last_log_time
+                    interval_samples = train_count - last_log_count
+                    step_throughput = interval_samples / interval_elapsed if interval_elapsed > 0 else 0
+                    percent_complete = (i + 1) / len(train_loader) * 100
+                    logger.info(f"  Epoch {epoch} | Batch {i+1}/{len(train_loader)} ({percent_complete:.1f}%) | Total Loss: {total_loss.item():.6f} | Data Loss: {data_loss.item():.6f} | Phys Loss: {physics_loss.item():.6f} | Speed: {step_throughput:.1f} samples/s | Elapsed: {elapsed:.1f}s")
+                    last_log_time = current_time
+                    last_log_count = train_count
                 
             train_loss /= train_count
             train_d_loss /= train_count
