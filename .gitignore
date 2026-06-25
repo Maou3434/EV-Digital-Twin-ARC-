@@ -100,3 +100,29 @@ SimuLink/PINN_Dataset/
 SimuLink/PINN_Ambient_Test/
 SimuLink_Datasets_Obsolete/
 
+# Models, weights, and checkpoints
+*.pt
+*.pth
+*.h5
+*.onnx
+*.pkl
+models/
+checkpoints/
+
+# Logs
+*.log
+logs/
+tb_logs/
+runs/
+
+# Images and plots
+*.png
+*.jpg
+*.jpeg
+*.svg
+images/
+plots/
+
+# Data files
+*.csv
+*.json
