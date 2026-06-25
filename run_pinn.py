@@ -23,7 +23,7 @@ from models.pinn import PhysicsInformedNN
 from utils.logging_utils import setup_logger, log_system_metrics, get_system_metrics
 
 # Initialize logger
-logger = setup_logger("training", "logs/training.log")
+logger = setup_logger("training", "logs_pinn/training.log")
 
 def load_config(config_path="config.yaml"):
     with open(config_path, 'r') as f:

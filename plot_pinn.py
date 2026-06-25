@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from utils.plotting import set_style, COLOR_TRUE, COLOR_BASE, COLOR_PINN, COLOR_RESID, COLOR_TEXT
 from utils.logging_utils import setup_logger
 
-logger = setup_logger("plotting", "logs/evaluation.log")
+logger = setup_logger("plotting", "logs_pinn/evaluation.log")
 
 def run_plotting(out_dir="results/pinn"):
     """

@@ -19,7 +19,7 @@ from models.pinn import PhysicsInformedNN
 from utils.metrics import calculate_metrics
 from utils.logging_utils import setup_logger, log_system_metrics
 
-logger = setup_logger("evaluation", "logs/evaluation.log")
+logger = setup_logger("evaluation", "logs_pinn/evaluation.log")
 
 def load_config(config_path="config.yaml"):
     with open(config_path, 'r') as f:

@@ -17,7 +17,7 @@ from utils.dataset import ThermalDataset, FEATURES
 from models.pinn import PhysicsInformedNN
 from utils.logging_utils import setup_logger, log_system_metrics
 
-logger = setup_logger("rollout", "logs/rollout.log")
+logger = setup_logger("rollout", "logs_pinn/rollout.log")
 
 def load_config(config_path="config.yaml"):
     with open(config_path, 'r') as f:
