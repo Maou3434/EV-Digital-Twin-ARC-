@@ -126,3 +126,14 @@ plots/
 # Data files
 *.csv
 *.json
+
+# LaTeX paper build artifacts
+PAPER/*.aux
+PAPER/*.bbl
+PAPER/*.blg
+PAPER/*.fdb_latexmk
+PAPER/*.fls
+PAPER/*.out
+PAPER/*.pdf
+PAPER/*.log
+
