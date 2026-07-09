@@ -1,0 +1,10 @@
+\section{Future Work}
+
+Several directions can build upon this work to improve the accuracy and utility of the battery thermal digital twin:
+\begin{itemize}
+    \item \textbf{Multi-Node Physics Formulation:} Expanding the PINN physics loss to encompass a two-state (core and casing) thermal model. This would allow the network to model internal core temperatures and resolve the core-surface thermal lag without relying on positive softplus constraints to mask transient lags.
+    \item \textbf{Online Parameter Adaptation:} Integrating recursive estimators (such as Kalman filters) to adaptively update $hA$ and $m C_p$ in real time as the cell ages or as cooling conditions vary.
+    \item \textbf{Aging and Degradation Integration:} Incorporating state-of-health (SOH) and capacity fade dynamics into the physics loss. As cells degrade, their internal resistance increases, which changes the heat generation profile ($P_{\text{loss}}$).
+    \item \textbf{Experimental Validation:} Validating the proposed PINN on physical lithium-ion battery cells placed in a climate chamber, moving beyond simulation-only datasets.
+    \item \textbf{Embedded Deployment:} Compiling the trained PINN model using tools like PyTorch Edge or ONNX Runtime to test execution speed and memory footprints on automotive-grade microcontrollers.
+\end{itemize}

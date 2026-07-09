@@ -1,0 +1,77 @@
+\section{Results}
+
+\subsection{Quantitative Performance Comparison}
+The performance of the baseline MLP and the PINN is evaluated using two evaluation methods: single-step-ahead prediction on the test set and multi-step autoregressive rollout across all 87 unseen WLTP2 drive cycles. Table \ref{tab:comparison} details the comparative metrics.
+
+\begin{table}[h]
+\centering
+\caption{Model Performance Comparison}
+\label{tab:comparison}
+\begin{tabular}{lcc}
+\toprule
+Evaluation Metric & Baseline MLP & Physics-Informed NN \\
+\midrule
+Single-step MAE ($^\circ$C) & $4.8978 \times 10^{-7}$ & $3.3783 \times 10^{-7}$ \\
+Single-step RMSE ($^\circ$C) & $8.6218 \times 10^{-7}$ & $8.9419 \times 10^{-7}$ \\
+Single-step $R^2$ Score & $1.0000$ & $1.0000$ \\
+Rollout MAE ($^\circ$C) & $0.0170$ & $0.0117$ \\
+Rollout RMSE ($^\circ$C) & $0.0211$ & $0.0143$ \\
+Maximum Rollout Error ($^\circ$C) & $0.2474$ & $0.0851$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both models achieve low single-step-ahead prediction losses, resulting in near-perfect $R^2$ scores. This is due to the small time step ($dt = 0.01$s) where the temperature change is negligible. Under these conditions, the identity mapping ($\Delta T \approx 0$) serves as a shortcut, masking potential model errors.
+
+The true performance differences emerge in the autoregressive rollout, where self-generated predictions are fed recursively. In this setting, the PINN outperforms the baseline MLP on all trajectory-level metrics. Specifically, the PINN reduces the rollout MAE by 31.2\% (from 0.0170$^\circ$C to 0.0117$^\circ$C) and the maximum rollout error by 65.6\% (from 0.2474$^\circ$C to 0.0851$^\circ$C). This demonstrates the regularizing effect of the physical constraints in maintaining trajectory stability.
+
+\subsection{Physical Parameter Learning}
+During PINN training, the convective heat transfer coefficient ($hA$) is learned dynamically in parallel with the network weights. Initialized at a default value of $hA_{\text{init}} = 0.1$ W/K, the softplus-constrained parameter converges over epochs to its final value:
+\begin{equation}
+hA_{\text{final}} \approx 36.49 \text{ W/K}
+\label{eq:learned_ha}
+\end{equation}
+This convergence is shown in the history log, where $hA$ rises from 0.855 W/K at epoch 1 to 36.490 W/K at epoch 18. This learned value is physically consistent with typical forced convection cooling setups for EV battery packs.
+
+\subsection{Visual Analysis of Results}
+The models are visually evaluated using the generated figures in the repository:
+\begin{itemize}
+    \item \textbf{Training Convergence:} The training loss curves show stable log-scale decay. The baseline MLP convergence is plotted in Fig. \ref{fig:baseline_loss}. The PINN convergence breakdown (total loss, data loss, and physics loss scaled by $\lambda_{\text{phys}} = 0.01$) is shown in Fig. \ref{fig:pinn_loss}, indicating a cooperative optimization landscape without parameter conflicts.
+    \item \textbf{Trajectory Tracking:} The trajectory comparison plots show predicted temperature tracking the ground truth over 150,000 time steps of the WLTP2 drive cycle. The baseline MLP rollout is shown in Fig. \ref{fig:baseline_rollout}, exhibiting slight drift during peaks. The PINN rollout is shown in Fig. \ref{fig:pinn_rollout}, tracking the thermal transients with high fidelity.
+    \item \textbf{Physics Residual Distribution:} The physics residual distribution histogram (Fig. \ref{fig:pinn_residual}) shows that the residual of equation \eqref{eq:residual} is zero-centered and tightly bounded ($\mu \approx 0.00$ W, standard deviation $\sigma < 0.05$ W), confirming that the network adheres to the conservation of energy.
+\end{itemize}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\linewidth]{figures/baseline_loss.png}
+\caption{Baseline MLP loss convergence over 100 training epochs.}
+\label{fig:baseline_loss}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\linewidth]{figures/loss.png}
+\caption{PINN total loss, data loss, and physics loss convergence breakdown.}
+\label{fig:pinn_loss}
+\end{figure}
+
+\begin{figure*}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{figures/baseline_rollout_trajectory.png}
+\caption{Autoregressive rollout temperature prediction vs. ground truth for the baseline MLP on dynamic test cycle 0 (WLTP2).}
+\label{fig:baseline_rollout}
+\end{figure*}
+
+\begin{figure*}[htbp]
+\centering
+\includegraphics[width=0.9\linewidth]{figures/rollout_trajectory.png}
+\caption{Autoregressive rollout temperature prediction vs. ground truth for the PINN on dynamic test cycle 0 (WLTP2).}
+\label{fig:pinn_rollout}
+\end{figure*}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\linewidth]{figures/residual.png}
+\caption{Probability density distribution of the PINN physics rate-of-change residual in the test set.}
+\label{fig:pinn_residual}
+\end{figure}

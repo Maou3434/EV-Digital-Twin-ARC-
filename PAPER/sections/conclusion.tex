@@ -1,0 +1,5 @@
+\section{Conclusion}
+
+This paper presented a Physics-Informed Neural Network (PINN) framework for predicting dynamic cell temperatures in electric vehicle battery systems. By embedding the lumped-parameter thermal energy balance equation as a soft constraint in the loss function and constraining the learned convective heat transfer coefficient ($hA$) to positive values via a softplus function, the model preserves physical consistency. We addressed the exposure bias problem in autoregressive rollouts by injecting Gaussian noise into the input temperature during training. 
+
+When evaluated on an unseen WLTP2 drive cycle, the PINN outperformed the baseline MLP, reducing the maximum rollout error from 0.2474$^\circ$C to 0.0851$^\circ$C. The learned convective heat transfer coefficient converged to a physically consistent value ($\approx 36.49$ W/K). The results demonstrate that combining physics constraints with noise injection provides a robust, fast, and physically consistent thermal digital twin suitable for real-time battery management systems.

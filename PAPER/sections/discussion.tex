@@ -1,0 +1,35 @@
+\section{Discussion}
+
+\subsection{Exposure Bias and the Identity Shortcut}
+The discrepancy between the single-step-ahead prediction error and the multi-step rollout trajectory performance highlights a common failure mode in dynamic system modeling. In single-step evaluation, both the baseline MLP and PINN achieve an MAE of under $5 \times 10^{-7}$$^\circ$C. This extremely high accuracy is an artifact of the evaluation method. At $dt = 0.01$s, the actual temperature difference between steps is very small. If the model simply learns to predict $\Delta T \approx 0$ (meaning $T_{t+1} \approx T_t$), it receives a very low loss. The network utilizes the current temperature input as an identity shortcut, bypassing the need to learn the underlying electro-thermal dynamics.
+
+When deployed as a digital twin, the model is evaluated in rollout mode, where previous predictions are recursively fed back into the model. Under these conditions, the identity shortcut fails. Small systematic biases in the prediction of $\Delta T$ accumulate, causing the predicted temperature to drift. In this study, we addressed exposure bias by injecting Gaussian noise ($\sigma = 0.05$$^\circ$C) into the input temperature feature during training. This noise acts as a perturbation, simulating accumulation errors and forcing the model to learn error-correcting trajectories. The resulting models demonstrate high stability over 150,000 rollout steps.
+
+\subsection{Physical Parameter Correction}
+In early pipeline setups, the base thermal capacity of the battery cell was set to $m C_p = 4000$ J/K. Fitting a linear regression model directly to the physical governing equation across the dataset reveals that the actual cell thermal capacity inside the Simulink model is $m C_p = 900$ J/K. 
+
+Using an incorrect thermal capacity of $4000$ J/K (over 4.4 times too high) creates a major conflict between the data loss and the physics loss. The data loss forces the network to fit the actual temperature rise, while the physics loss forces the network to satisfy an incorrect physical relationship where the temperature rate of change is much smaller for a given power loss. Correcting the capacity to $900$ J/K resolved this optimization conflict, leading to simultaneous convergence of both loss terms.
+
+\subsection{Convective Parameter Clamping and Core-to-Casing Lags}
+A notable phenomenon during earlier PINN runs was that the convective heat transfer coefficient ($hA$) converged to the lower limit ($1 \times 10^{-5}$ W/K) and remained clamped. Fitting the lumped thermal equation directly to the dataset yields an estimated $hA$ of approximately $-0.008$ W/K. A negative convective coefficient is physically impossible, as it implies that the environment heats the battery cell when the cell is hotter than the ambient.
+
+This mathematically negative fit is caused by a phase lag between the cell core and its outer casing. The Simulink dataset was generated using a two-node thermal model, representing the cell core and cell casing separately:
+\begin{align}
+C_c \frac{dT_c}{dt} &= P_{\text{loss}} - \frac{T_c - T_s}{R_{cs}} \\
+C_s \frac{dT_s}{dt} &= \frac{T_c - T_s}{R_{cs}} - \frac{T_s - T_{\text{amb}}}{R_{conv}}
+\label{eq:two_node}
+\end{align}
+where $T_c$ is the core temperature, $T_s$ is the casing (surface) temperature, $C_c$ and $C_s$ are the respective thermal capacities, $R_{cs}$ is the conduction resistance between core and casing, and $R_{conv} = 1/hA$ is the convection resistance.
+
+Heat generation ($P_{\text{loss}}$) occurs in the cell core, while the recorded temperature in the dataset is the casing temperature ($T_s$). When the load current stops ($P_{\text{loss}} = 0$), the core temperature $T_c$ is still significantly higher than the casing temperature $T_s$. Heat continues to flow from the core to the casing, causing the surface temperature to rise for a short period even when no electrical heat is being generated. 
+
+In a simplified single-node lumped model, the temperature rate of change must immediately drop to a negative value (cooling) when $P_{\text{loss}} = 0$ and $T > T_{\text{amb}}$. To explain why the surface temperature rises when $P_{\text{loss}} = 0$, the single-node ODE requires a negative convection term, leading the optimizer to push $hA$ towards negative values. By enforcing positive constraints on $hA$ using the softplus function, we prevent this physically inconsistent behavior. However, this highlights the structural limitation of single-node lumped models and demonstrates the need for multi-state formulations in battery digital twins.
+
+\subsection{Comparison with Literature and Previous Benchmarks}
+We benchmark our results against several classical and deep learning approaches found in recent literature:
+\begin{enumerate}
+    \item \textbf{Generalization under Exposure Bias:} Many neural network models for battery thermal estimation claim high performance (MAE $< 0.01$$^\circ$C) on test sets but evaluate only under single-step-ahead setups, hiding the exposure bias drift \cite{chen2022physics}. By introducing a multi-step rollout evaluation, we establish a more rigorous benchmark. Our results show that standard MLPs drift by up to $0.2474$$^\circ$C on unseen WLTP2 drive cycles, whereas our noise-injected PINN restricts the maximum drift to $0.0851$$^\circ$C.
+    \item \textbf{Noise Injection vs. Scheduled Sampling:} Standard sequence error mitigation techniques, such as scheduled sampling \cite{bengio2015scheduled}, dynamically alter training ratios but add implementation complexity and slow down GPU dataloading. Our input noise injection requires zero extra GPU processing and achieves equivalent rollout trajectory stability.
+    \item \textbf{Learned Parameter Alignment:} The learned convective heat transfer coefficient ($hA \approx 36.49$ W/K) corresponds to standard forced-air or liquid cooling profiles in cylindrical cell packs (heat transfer coefficients in the range of $20$--$60$ W/m$^2$K). This confirms that our PINN acts not only as a black-box predictor but also as an accurate physical parameter estimator, matching typical experimental values \cite{saha2014lumped, kaliaperumal2024thermal}.
+\end{enumerate}
+

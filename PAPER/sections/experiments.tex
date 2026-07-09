@@ -1,0 +1,82 @@
+\section{Experimental Setup}
+
+\subsection{Hardware and Software Environment}
+To evaluate the models and train on the large-scale dataset, all experiments were conducted on a laptop computer with the following specifications:
+\begin{itemize}
+    \item \textbf{CPU:} Intel Core i7
+    \item \textbf{GPU:} NVIDIA GeForce RTX 4060 Laptop GPU (8 GB VRAM)
+    \item \textbf{RAM:} 16 GB DDR5
+    \item \textbf{Operating System:} Windows 11 Home
+    \item \textbf{CUDA Version:} 12.9
+    \item \textbf{Software Stack:} PyTorch 2.4 (CUDA-enabled), Python 3.10, NumPy, Pandas, Scikit-Learn, Joblib, and Matplotlib.
+\end{itemize}
+
+To optimize execution speed and fit the training pipeline within the 8 GB VRAM budget, we enabled TensorFloat-32 (TF32) tensor core execution:
+\begin{lstlisting}[language=Python]
+torch.set_float32_matmul_precision("high")
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+\end{lstlisting}
+Additionally, we utilized automatic mixed precision (AMP) via \texttt{torch.amp.autocast("cuda")} during the training forward passes, reducing memory footprint and maximizing GPU throughput.
+
+\subsection{Dataset Description}
+The dataset consists of 522 CSV files generated from Simulink, representing a wide variety of battery operating profiles under dynamic temperatures. The dataset totals approximately 78 million samples. To guarantee that the models learn drive-cycle generalization, the data partition is structured as follows:
+\begin{itemize}
+    \item \textbf{Training Set:} Contains all files matching the cycle patterns \texttt{TRAIN\_cycleFTP75}, \texttt{TRAIN\_cycleHUDDS}, \texttt{TRAIN\_cycleUDDS}, \texttt{TRAIN\_cycleUS06}, and \texttt{TRAIN\_cycleWLTP1}.
+    \item \textbf{Test Set:} Contains all files matching the pattern \texttt{TEST\_cycleWLTP2}.
+\end{itemize}
+This split ensures the model is evaluated on a completely unseen drive cycle (WLTP2) under varying starting states of charge, ambient temperatures (ranging from 0$^\circ$C to 50$^\circ$C), and battery mass scaling factors (0.8, 1.0, 1.2). The dataset columns are processed to extract the features and targets summarized in Table \ref{tab:variables}.
+
+
+\begin{table}[h]
+\centering
+\caption{Variables Used in the Digital Twin Pipeline}
+\label{tab:variables}
+\begin{tabular}{lcl}
+\toprule
+Variable & Type & Description \\
+\midrule
+Temperature\_C & Feature & Current cell surface temperature ($^\circ$C) \\
+Current\_A & Feature & Charge/discharge current (A) \\
+Voltage\_V & Feature & Terminal cell voltage (V) \\
+SOC\_pct & Feature & State-of-charge percentage (\%) \\
+PowerLoss\_W & Feature & Calculated power loss heat generation (W) \\
+AmbientTemp\_C & Feature & Ambient cooling temperature ($^\circ$C) \\
+MassScale & Feature & Cell structural mass scale (dimensionless) \\
+dt & Info & Time step size (s) \\
+Delta\_T & Target & Target temperature change ($^\circ$C) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Variables such as \texttt{BatteryPower\_W}, \texttt{InitialSOC\_pct}, \texttt{InitialBattTemp\_C}, \texttt{DriveCycle}, and \texttt{Time\_s} are explicitly excluded from training features, preventing the network from memorizing sequence indices or non-causal statistics.
+
+\subsection{Training Hyperparameters}
+Both the baseline MLP and the PINN were trained using identical hyperparameter profiles to ensure a fair comparison:
+\begin{itemize}
+    \item \textbf{Batch Size:} 8,192
+    \item \textbf{Learning Rate:} $0.001$ with Adam optimizer
+    \item \textbf{Epochs:} 100
+    \item \textbf{Early Stopping:} Patience of 10 epochs monitoring validation data loss
+    \item \textbf{Gradient Clipping:} L2-norm threshold of 1.0
+    \item \textbf{DataLoader Configuration:} $num\_workers=6$, $prefetch\_factor=4$, with $pin\_memory=True$ and $persistent\_workers=True$ to eliminate data transfer bottlenecks.
+\end{itemize}
+
+\subsection{Exposure Bias Mitigation: Input Noise Injection}
+To address the exposure bias that causes autoregressive prediction drift, we implement input noise injection during training. For each training sample, independent Gaussian noise is added to the \texttt{Temperature\_C} feature:
+\begin{equation}
+T_{t,\text{input}} = T_{t,\text{true}} + \epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, \sigma^2)
+\label{eq:noise_injection}
+\end{equation}
+where the standard deviation is set to $\sigma = 0.05$$^\circ$C. The target $\Delta T_t$ remains unchanged. 
+
+By perturbing the input temperature, the model is exposed to out-of-trajectory states that simulate accumulation errors. This forces the neural network to learn a mapping that steers perturbed states back to the true trajectory, mitigating drift during inference.
+
+\subsection{Rollout Evaluation Scheme}
+The primary performance metric for the battery digital twin is the multi-step rollout. During testing, the models predict temperature autoregressively over each test cycle file:
+\begin{align}
+\hat{T}_{t+1} &= \hat{T}_t + \Delta \hat{T}_t^{\text{phys}} \\
+\Delta \hat{T}_t^{\text{phys}} &= \text{Model}([\hat{T}_t, I_t, V_t, \text{SOC}_t, P_{\text{loss}, t}, T_{\text{amb}, t}, \text{MassScale}_t]^T)
+\label{eq:rollout_step}
+\end{align}
+where the first step is initialized with the ground-truth cell temperature $\hat{T}_0 = T_{0}$. At each subsequent step, the model uses its own previous temperature prediction. Rollouts are evaluated across all 87 TEST cycles. We compute three trajectory-level metrics: Rollout Mean Absolute Error (Rollout MAE), Rollout Root Mean Squared Error (Rollout RMSE), and Maximum Rollout Error.

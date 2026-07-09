@@ -1,0 +1,140 @@
+\section{Methodology}
+
+\subsection{System Overview}
+The battery thermal digital twin pipeline is composed of five major components: dataset generation via Simulink, incremental preprocessing and scaling, baseline Multi-Layer Perceptron (MLP) training, Physics-Informed Neural Network (PINN) training, and autoregressive rollout evaluation. 
+
+The dataset is generated from a high-fidelity Simulink electro-thermal model simulating cell behavior under dynamic loads. Preprocessing calculates the temperature change $\Delta T_t = T_{t+1} - T_t$ and time step $dt_t = t_{t+1} - t_t$ independently for each drive cycle file. This prevents artificial transitions across cycle boundaries. Features are scaled using standard normalization fitted incrementally to avoid memory bottlenecks. The models take current states as inputs and predict the temperature delta over the time step.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    auto,
+    block/.style={rectangle, draw, fill=blue!10, text width=2.4cm, text centered, rounded corners, minimum height=0.9cm, font=\scriptsize},
+    line/.style={draw, -latex, thick}
+]
+    \node [block] (simulink) {Simulink Data\\Generation};
+    \node [block, below=0.4cm of simulink] (preprocess) {Preprocessing \&\\Scaling};
+    \node [block, below=0.4cm of preprocess] (train) {MLP / PINN\\Training};
+    \node [block, below=0.4cm of train] (eval) {Autoregressive\\Rollout};
+    
+    \path [line] (simulink) -- (preprocess);
+    \path [line] (preprocess) -- (train);
+    \path [line] (train) -- (eval);
+\end{tikzpicture}
+\caption{The battery thermal digital twin pipeline from Simulink data generation to autoregressive rollout evaluation.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Lumped Battery Thermal Model}
+The physics constraints embedded within the PINN are derived from the governing ordinary differential equation (ODE) of a lumped-parameter thermal model \cite{bernardi1985general}. The cell energy balance is formulated as:
+\begin{equation}
+m C_p \frac{dT}{dt} = P_{\text{loss}} - Q_{\text{loss}}
+\label{eq:governing}
+\end{equation}
+where $m$ is the mass of the battery cell (kg), $C_p$ is the specific heat capacity (J/kg/K), $T$ is the cell temperature (K), $P_{\text{loss}}$ is the heat generation rate (W) due to internal Joule heating and polarization losses, and $Q_{\text{loss}}$ is the heat transfer rate to the ambient environment (W).
+
+Assuming Newton's law of cooling for convection, the heat loss is expressed as:
+\begin{equation}
+Q_{\text{loss}} = hA (T - T_{\text{amb}})
+\label{eq:convection}
+\end{equation}
+where $hA$ is the convective heat transfer coefficient multiplied by the cell surface area (W/K), and $T_{\text{amb}}$ is the ambient temperature (K). 
+
+To account for cell scaling variations across different experiments in the dataset, we incorporate a dimensionless scaling factor, $\text{MassScale}$. The physical rate of temperature change is modeled as:
+\begin{equation}
+\frac{dT}{dt} = \frac{P_{\text{loss}} - hA (T - T_{\text{amb}})}{m C_p \cdot \text{MassScale}}
+\label{eq:rate_of_change}
+\end{equation}
+
+In this study, the base thermal capacity is set to $m C_p = 900.0$ J/K, which matches the physical properties of standard lithium-ion cells used in the Simulink generator.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=1.2cm,
+    node/.style={circle, draw, fill=orange!25, minimum size=0.8cm, font=\scriptsize},
+    ambient/.style={circle, draw, fill=blue!10, minimum size=0.8cm, font=\scriptsize},
+    resistor/.style={rectangle, draw, fill=gray!15, minimum height=0.3cm, minimum width=0.7cm, font=\tiny}
+]
+    \node[node] (core) {$T_c$};
+    \node[resistor, right=0.6cm of core] (Rcs) {$R_{cs}$};
+    \node[node, right=0.6cm of Rcs] (case) {$T_s$};
+    \node[resistor, right=0.6cm of case] (Rconv) {$R_{\text{conv}}$};
+    \node[ambient, right=0.6cm of Rconv] (amb) {$T_{\text{amb}}$};
+    
+    \draw[thick] (core) -- (Rcs);
+    \draw[thick, ->] (Rcs) -- (case);
+    \draw[thick] (case) -- (Rconv);
+    \draw[thick, ->] (Rconv) -- (amb);
+    
+    \node[below=0.1cm of core, font=\tiny, text centered] {Core Heat $P_{\text{loss}}$};
+    \node[below=0.1cm of case, font=\tiny, text centered] {Casing};
+\end{tikzpicture}
+\caption{Equivalent thermal circuit showing the dual-node core-to-casing heat flow in the Simulink environment.}
+\label{fig:thermal_circuit}
+\end{figure}
+
+\subsection{Baseline Multi-Layer Perceptron (MLP)}
+The baseline neural network is a fully connected Multi-Layer Perceptron designed to map the battery electro-thermal features to the temperature change. The model inputs are represented by the feature vector:
+\begin{equation}
+\mathbf{x}_t = [T_t, I_t, V_t, \text{SOC}_t, P_{\text{loss}, t}, T_{\text{amb}, t}, \text{MassScale}_t]^T
+\label{eq:features}
+\end{equation}
+where $I_t$ is current, $V_t$ is voltage, and $\text{SOC}_t$ is state-of-charge. The target output is the physical temperature delta:
+\begin{equation}
+y_t = \Delta T_t = T_{t+1} - T_t
+\label{eq:target}
+\end{equation}
+
+The network architecture is defined by the following layer structure:
+\begin{align*}
+\mathbf{h}_1 &= \text{ReLU}(\mathbf{W}_1 \mathbf{x}_t + \mathbf{b}_1) \quad (\mathbf{W}_1 \in \mathbb{R}^{64 \times 7}) \\
+\mathbf{h}_2 &= \text{ReLU}(\mathbf{W}_2 \mathbf{h}_1 + \mathbf{b}_2) \quad (\mathbf{W}_2 \in \mathbb{R}^{64 \times 64}) \\
+\mathbf{h}_3 &= \text{ReLU}(\mathbf{W}_3 \mathbf{h}_2 + \mathbf{b}_3) \quad (\mathbf{W}_3 \in \mathbb{R}^{32 \times 64}) \\
+\Delta \hat{T}_t &= \mathbf{W}_4 \mathbf{h}_3 + \mathbf{b}_4 \quad (\mathbf{W}_4 \in \mathbb{R}^{1 \times 32})
+\end{align*}
+The network is optimized using the Mean Squared Error (MSE) data loss:
+\begin{equation}
+\mathcal{L}_{\text{data}} = \frac{1}{N} \sum_{i=1}^N \left( \Delta T_i - \Delta \hat{T}_i \right)^2
+\label{eq:loss_data}
+\end{equation}
+
+\subsection{Physics-Informed Neural Network (PINN) Formulation}
+The PINN shares the exact architectural design of the baseline MLP but incorporates the governing physical equation \eqref{eq:rate_of_change} in its objective function. This enforces physical consistency through a composite loss function:
+\begin{equation}
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{data}} + \lambda_{\text{phys}} \mathcal{L}_{\text{physics}}
+\label{eq:loss_total}
+\end{equation}
+where $\lambda_{\text{phys}}$ is a regularization weight, set to $0.01$ in our training configuration.
+
+The physics loss term measures the residual of the thermal ODE over the batch. To compute the derivative, the predicted temperature delta in scaled units is first inverted back to the physical scale using the saved target scaler parameters:
+\begin{equation}
+\Delta \hat{T}_i^{\text{phys}} = \Delta \hat{T}_i \cdot \sigma_y + \mu_y
+\label{eq:unscale}
+\end{equation}
+where $\mu_y$ and $\sigma_y$ are the mean and standard deviation of the targets in the training dataset.
+
+The physics residual $R_i$ for sample $i$ is calculated in physical units (K/s) as:
+\begin{equation}
+R_i = \frac{\Delta \hat{T}_i^{\text{phys}}}{dt_i} - \frac{P_{\text{loss}, i} - hA (T_i - T_{\text{amb}, i})}{m C_p \cdot \text{MassScale}_i}
+\label{eq:residual}
+\end{equation}
+where $T_i$, $P_{\text{loss}, i}$, $T_{\text{amb}, i}$, and $\text{MassScale}_i$ are inputs in physical (unscaled) units, and $dt_i$ is the time step size in seconds. The physics loss is then computed as the mean squared residual:
+\begin{equation}
+\mathcal{L}_{\text{physics}} = \frac{1}{N} \sum_{i=1}^N R_i^2
+\label{eq:loss_physics}
+\end{equation}
+
+\subsection{Trainable Parameter Parameterization}
+The convective heat transfer coefficient, $hA$, is treated as a trainable model parameter. Because a negative value of $hA$ would represent physical heating rather than cooling, the parameter must be strictly positive. Standard clamping during optimization halts gradient flow when the parameter hits the boundary. To avoid this, we parameterize $hA$ using a raw real-valued parameter $hA_{\text{raw}}$ passed through a softplus function:
+\begin{equation}
+hA = \text{softplus}(hA_{\text{raw}}) = \ln(1 + e^{hA_{\text{raw}}})
+\label{eq:softplus}
+\end{equation}
+
+To initialize $hA$ at a realistic starting value of $hA_{\text{init}} = 0.1$ W/K, the raw parameter is initialized as:
+\begin{equation}
+hA_{\text{raw, init}} = \ln(e^{hA_{\text{init}}} - 1)
+\label{eq:raw_init}
+\end{equation}
+This formulation ensures that $hA$ remains positive throughout training while allowing gradient backpropagation to update it continuously.

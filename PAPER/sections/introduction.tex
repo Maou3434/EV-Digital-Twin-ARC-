@@ -1,0 +1,21 @@
+\section{Introduction}
+
+The global transition to electric vehicles (EVs) places high demands on battery management systems (BMS) to ensure safety, extend service life, and maximize performance. Lithium-ion batteries generate substantial heat during charge and discharge cycles due to internal resistance and chemical reactions. If this heat is not managed, it can lead to localized hotspots, accelerated degradation, or catastrophic thermal runaway events. Real-time temperature monitoring at the individual cell and pack level is therefore a critical function of modern BMS.
+
+Dynamic thermal models form the backbone of battery thermal digital twins, which run in parallel with the physical battery pack to predict temperature states, estimate cooling requirements, and adjust charging protocols. Historically, high-fidelity thermal modeling has relied on computational fluid dynamics (CFD) or finite element methods (FEM). While highly accurate, these approaches are computationally expensive, making them unsuitable for real-time edge execution inside a vehicle. Consequently, simplified lumped-parameter thermal networks or equivalent circuit models (ECMs) are commonly deployed. However, these models require manual parameter calibration and struggle to resolve transient delays and spatial thermal gradients under aggressive driving profiles.
+
+Recently, data-driven machine learning (ML) models, such as Multi-Layer Perceptrons (MLPs) and Recurrent Neural Networks (RNNs), have emerged as alternatives due to their fast evaluation speeds. Despite their success, purely data-driven models suffer from two primary limitations:
+\begin{enumerate}
+    \item \textbf{Physical Inconsistency:} They can output physically impossible predictions, such as temperature dropping while current and ambient temperature are high, especially when predicting outside the training data distribution.
+    \item \textbf{Exposure Bias and Drift:} During training, models are typically optimized using the one-step-ahead objective, predicting $T_{t+1}$ given the ground-truth temperature $T_t$. During real-world execution (rollout), the model must run autoregressively, feeding its own previous prediction back as the input. Tiny errors in the predicted delta accumulate over thousands of steps, causing the rollout trajectory to drift far from the actual temperature.
+\end{enumerate}
+
+To address these limitations, this paper proposes a Physics-Informed Neural Network (PINN) framework for battery cell thermal prediction. By embedding the governing heat equation as a soft constraint in the loss function, the neural network learns to predict temperature changes that respect thermodynamic laws. We resolve the exposure bias issue by adding Gaussian noise to the temperature inputs during training. This perturbs the state space and trains the network to self-correct from small errors, stabilizing long-term rollouts. Furthermore, we demonstrate that a single-node lumped thermal model fitted to dual-node cell surface data leads to negative convective heat transfer coefficients ($hA$) due to thermal phase lags. We introduce a softplus-constrained parameterization of $hA$ that prevents this non-physical convergence while permitting stable convergence to the actual physical values.
+
+The main contributions of this work are as follows:
+\begin{itemize}
+    \item We develop a robust, GPU-optimized PINN thermal training and rollout pipeline for battery cells that handles large-scale datasets exceeding 78 million samples.
+    \item We demonstrate that incorporating Gaussian noise injection into the input temperature feature during training effectively mitigates exposure bias, reducing the maximum rollout error on an unseen WLTP2 drive cycle by over 65\%.
+    \item We present a system parameter estimation framework where the model simultaneously learns the thermal state and the convective heat transfer coefficient ($hA$). We show that enforcing positive constraints on $hA$ via softplus ensures physical validity and resolves conflicts between the physical residual and empirical data fitting.
+    \item We perform an ablation study comparing the conventional MLP and the PINN model across multiple standard automotive drive cycles (FTP75, HUDDS, UDDS, US06, WLTP1, WLTP2), validating generalization and parameter convergence.
+\end{itemize}
