@@ -1,7 +1,7 @@
 \section{Experimental Setup}
 
 \subsection{Hardware and Software Environment}
-To evaluate the models and train on the large-scale dataset, all experiments were conducted on a laptop computer with the following specifications:
+All experiments were conducted on a workstation with the following hardware specifications:
 \begin{itemize}
     \item \textbf{CPU:} Intel Core i7
     \item \textbf{GPU:} NVIDIA GeForce RTX 4060 Laptop GPU (8 GB VRAM)
@@ -11,22 +11,23 @@ To evaluate the models and train on the large-scale dataset, all experiments wer
     \item \textbf{Software Stack:} PyTorch 2.4 (CUDA-enabled), Python 3.10, NumPy, Pandas, Scikit-Learn, Joblib, and Matplotlib.
 \end{itemize}
 
-To optimize execution speed and fit the training pipeline within the 8 GB VRAM budget, we enabled TensorFloat-32 (TF32) tensor core execution:
+To maximize GPU throughput and optimize memory efficiency during large-batch training, TensorFloat-32 (TF32) tensor core execution was enabled:
 \begin{lstlisting}[language=Python]
 torch.set_float32_matmul_precision("high")
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 \end{lstlisting}
-Additionally, we utilized automatic mixed precision (AMP) via \texttt{torch.amp.autocast("cuda")} during the training forward passes, reducing memory footprint and maximizing GPU throughput.
+Automatic mixed precision (AMP) via \texttt{torch.amp.autocast("cuda")} was applied during training forward passes, reducing peak GPU VRAM allocation to approximately 21.3~MB. Benchmark experiments established optimal DataLoader throughput at 3,891 samples/second using \texttt{num\_workers=4} and \texttt{prefetch\_factor=2} with \texttt{pin\_memory=True}.
 
 \subsection{Dataset Description}
-The dataset consists of 522 CSV files generated from Simulink, representing a wide variety of battery operating profiles under dynamic temperatures. The dataset totals approximately 78 million samples. To guarantee that the models learn drive-cycle generalization, the data partition is structured as follows:
-\begin{itemize}
-    \item \textbf{Training Set:} Contains all files matching the cycle patterns \texttt{TRAIN\_cycleFTP75}, \texttt{TRAIN\_cycleHUDDS}, \texttt{TRAIN\_cycleUDDS}, \texttt{TRAIN\_cycleUS06}, and \texttt{TRAIN\_cycleWLTP1}.
-    \item \textbf{Test Set:} Contains all files matching the pattern \texttt{TEST\_cycleWLTP2}.
-\end{itemize}
-This split ensures the model is evaluated on a completely unseen drive cycle (WLTP2) under varying starting states of charge, ambient temperatures (ranging from 0$^\circ$C to 50$^\circ$C), and battery mass scaling factors (0.8, 1.0, 1.2). The dataset columns are processed to extract the features and targets summarized in Table \ref{tab:variables}.
+The dataset comprises 522 independent CSV simulation files generated from a high-fidelity electro-thermal Simulink model. The simulations capture dynamic cell operating conditions under varied automotive drive cycles, ambient temperatures (0$^\circ$C to 50$^\circ$C), initial states of charge, and cell mass scaling factors (0.8, 1.0, 1.2). At a temporal resolution of $dt = 0.01$~s, the combined dataset contains approximately 78 million time-step samples.
 
+To evaluate generalization across dynamic load profiles, the dataset partition is structured by drive cycle:
+\begin{itemize}
+    \item \textbf{Training Set:} 435 files covering drive cycles \texttt{FTP75}, \texttt{HUDDS}, \texttt{UDDS}, \texttt{US06}, and \texttt{WLTP1} (further split into 391 training and 44 validation files).
+    \item \textbf{Test Set:} 87 files covering the unseen \texttt{WLTP2} drive cycle across all ambient temperature and mass scale combinations.
+\end{itemize}
+The dataset features and targets are summarized in Table \ref{tab:variables}.
 
 \begin{table}[h]
 \centering
@@ -49,34 +50,40 @@ Delta\_T & Target & Target temperature change ($^\circ$C) \\
 \end{tabular}
 \end{table}
 
-Variables such as \texttt{BatteryPower\_W}, \texttt{InitialSOC\_pct}, \texttt{InitialBattTemp\_C}, \texttt{DriveCycle}, and \texttt{Time\_s} are explicitly excluded from training features, preventing the network from memorizing sequence indices or non-causal statistics.
+Auxiliary non-causal variables (\texttt{BatteryPower\_W}, \texttt{InitialSOC\_pct}, \texttt{InitialBattTemp\_C}, \texttt{DriveCycle}, and \texttt{Time\_s}) are excluded from feature inputs to prevent sequence memorization.
 
-\subsection{Training Hyperparameters}
-Both the baseline MLP and the PINN were trained using identical hyperparameter profiles to ensure a fair comparison:
+\subsection{Training Hyperparameters and Reproducibility}
+Both the baseline MLP and PINN were trained using identical hyperparameter profiles:
 \begin{itemize}
     \item \textbf{Batch Size:} 8,192
-    \item \textbf{Learning Rate:} $0.001$ with Adam optimizer
-    \item \textbf{Epochs:} 100
-    \item \textbf{Early Stopping:} Patience of 10 epochs monitoring validation data loss
+    \item \textbf{Learning Rate:} $\alpha = 0.001$ with Adam optimizer ($\beta_1 = 0.9, \beta_2 = 0.999, \epsilon = 10^{-8}$, weight decay = $0$)
+    \item \textbf{Maximum Epochs:} 100 (Early stopping with patience of 10 epochs monitoring validation loss; PINN converged at epoch 18)
     \item \textbf{Gradient Clipping:} L2-norm threshold of 1.0
-    \item \textbf{DataLoader Configuration:} $num\_workers=6$, $prefetch\_factor=4$, with $pin\_memory=True$ and $persistent\_workers=True$ to eliminate data transfer bottlenecks.
+    \item \textbf{Physics Weight:} $\lambda_{\text{phys}} = 0.01$ (for PINN)
+\end{itemize}
+All reported results reflect single training runs per model architecture under fixed random seed conditions. Multi-seed statistical variance evaluation is identified as an important topic for future benchmarking.
+
+\subsection{Reproducibility and Preprocessing Pipeline}
+To ensure exact experimental reproducibility, the preprocessing and training workflow is specified as follows:
+\begin{itemize}
+    \item \textbf{Random Seeds:} PyTorch and NumPy random number generators were initialized with a fixed seed of \texttt{42}.
+    \item \textbf{Data Splitting:} The 435 training simulation files were partitioned at the file level into 391 training files (90\%) and 44 validation files (10\%). The 87 test files (WLTP2 drive cycle) were held out entirely.
+    \item \textbf{Normalization Procedure:} Feature standard scalers (\texttt{StandardScaler}) were fitted incrementally exclusively on the 391 training split files to calculate feature means and standard deviations. Target scaling parameters ($\mu_y, \sigma_y$) were computed strictly from training targets ($\Delta T_t$). No validation or test data was used during scaler fitting, preventing data leakage.
 \end{itemize}
 
 \subsection{Exposure Bias Mitigation: Input Noise Injection}
-To address the exposure bias that causes autoregressive prediction drift, we implement input noise injection during training. For each training sample, independent Gaussian noise is added to the \texttt{Temperature\_C} feature:
+To address exposure bias during autoregressive rollouts, input noise injection was incorporated into training. Independent Gaussian noise is added to the \texttt{Temperature\_C} feature in \eqref{eq:noise_injection}:
 \begin{equation}
 T_{t,\text{input}} = T_{t,\text{true}} + \epsilon_t, \quad \epsilon_t \sim \mathcal{N}(0, \sigma^2)
 \label{eq:noise_injection}
 \end{equation}
-where the standard deviation is set to $\sigma = 0.05$$^\circ$C. The target $\Delta T_t$ remains unchanged. 
-
-By perturbing the input temperature, the model is exposed to out-of-trajectory states that simulate accumulation errors. This forces the neural network to learn a mapping that steers perturbed states back to the true trajectory, mitigating drift during inference.
+where $\sigma = 0.05$$^\circ$C. The target $\Delta T_t$ remains unperturbed. This perturbation exposes the model to perturbed state inputs, training it to return toward true trajectories during multi-step inference.
 
 \subsection{Rollout Evaluation Scheme}
-The primary performance metric for the battery digital twin is the multi-step rollout. During testing, the models predict temperature autoregressively over each test cycle file:
+Model evaluation combines single-step testing with multi-step autoregressive rollout across all 87 unseen WLTP2 test files generated within the same Simulink framework. In rollout mode, temperature is updated recursively via \eqref{eq:rollout_step}:
 \begin{align}
 \hat{T}_{t+1} &= \hat{T}_t + \Delta \hat{T}_t^{\text{phys}} \\
 \Delta \hat{T}_t^{\text{phys}} &= \text{Model}([\hat{T}_t, I_t, V_t, \text{SOC}_t, P_{\text{loss}, t}, T_{\text{amb}, t}, \text{MassScale}_t]^T)
 \label{eq:rollout_step}
 \end{align}
-where the first step is initialized with the ground-truth cell temperature $\hat{T}_0 = T_{0}$. At each subsequent step, the model uses its own previous temperature prediction. Rollouts are evaluated across all 87 TEST cycles. We compute three trajectory-level metrics: Rollout Mean Absolute Error (Rollout MAE), Rollout Root Mean Squared Error (Rollout RMSE), and Maximum Rollout Error.
+with $\hat{T}_0 = T_0$. Trajectory tracking is quantified using Rollout MAE, Rollout RMSE, and Maximum Rollout Error across each 150,000-step test cycle file.

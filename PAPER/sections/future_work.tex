@@ -1,10 +1,12 @@
 \section{Future Work}
 
-Several directions can build upon this work to improve the accuracy and utility of the battery thermal digital twin:
+To build upon the findings and address the identified limitations, several research directions are planned:
 \begin{itemize}
-    \item \textbf{Multi-Node Physics Formulation:} Expanding the PINN physics loss to encompass a two-state (core and casing) thermal model. This would allow the network to model internal core temperatures and resolve the core-surface thermal lag without relying on positive softplus constraints to mask transient lags.
-    \item \textbf{Online Parameter Adaptation:} Integrating recursive estimators (such as Kalman filters) to adaptively update $hA$ and $m C_p$ in real time as the cell ages or as cooling conditions vary.
-    \item \textbf{Aging and Degradation Integration:} Incorporating state-of-health (SOH) and capacity fade dynamics into the physics loss. As cells degrade, their internal resistance increases, which changes the heat generation profile ($P_{\text{loss}}$).
-    \item \textbf{Experimental Validation:} Validating the proposed PINN on physical lithium-ion battery cells placed in a climate chamber, moving beyond simulation-only datasets.
-    \item \textbf{Embedded Deployment:} Compiling the trained PINN model using tools like PyTorch Edge or ONNX Runtime to test execution speed and memory footprints on automotive-grade microcontrollers.
+    \item \textbf{Experimental Hardware Validation:} Testing and validating the PINN digital twin on physical lithium-ion battery cells operating inside a thermal climate chamber under dynamic load profiles.
+    \item \textbf{Multi-Node Physics Formulation:} Extending the physics loss to a multi-state (core and surface) thermal formulation to resolve core-surface phase lags without relying solely on softplus parameter bounds.
+    \item \textbf{Comprehensive Baseline Benchmarking:} Expanding model comparisons to include Recurrent Neural Networks (LSTM/GRU), Temporal Convolutional Networks, Transformers, and continuous-time Neural ODEs.
+    \item \textbf{Multi-Seed Statistical Analysis:} Conducting multi-seed training runs to compute mean, standard deviation, and statistical confidence intervals for rollout performance metrics.
+    \item \textbf{Online Parameter Adaptation:} Integrating recursive estimation frameworks (e.g., Extended Kalman Filtering) for real-time online updates of $hA$ and $m C_p$ as cooling conditions and flow rates vary.
+    \item \textbf{Aging and SOH Integration:} Incorporating capacity fade and internal resistance growth into the loss function to model thermal behavior changes across the battery lifecycle.
+    \item \textbf{Embedded Edge Deployment:} Exporting trained models via ONNX Runtime or C++ TensorRT to benchmark execution speed and memory utilization on automotive microcontrollers.
 \end{itemize}

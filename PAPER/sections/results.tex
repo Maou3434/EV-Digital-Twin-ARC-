@@ -1,7 +1,7 @@
 \section{Results}
 
 \subsection{Quantitative Performance Comparison}
-The performance of the baseline MLP and the PINN is evaluated using two evaluation methods: single-step-ahead prediction on the test set and multi-step autoregressive rollout across all 87 unseen WLTP2 drive cycles. Table \ref{tab:comparison} details the comparative metrics.
+The baseline MLP and PINN models were evaluated using both single-step-ahead prediction on test data and multi-step autoregressive rollout across all 87 unseen WLTP2 drive cycles. Table \ref{tab:comparison} presents the comparative evaluation metrics.
 
 \begin{table}[h]
 \centering
@@ -21,37 +21,47 @@ Maximum Rollout Error ($^\circ$C) & $0.2474$ & $0.0851$ \\
 \end{tabular}
 \end{table}
 
-Both models achieve low single-step-ahead prediction losses, resulting in near-perfect $R^2$ scores. This is due to the small time step ($dt = 0.01$s) where the temperature change is negligible. Under these conditions, the identity mapping ($\Delta T \approx 0$) serves as a shortcut, masking potential model errors.
+Both models achieve low single-step-ahead prediction errors and $R^2$ scores near unity. At $dt = 0.01$~s, step-to-step temperature changes are small, enabling an identity mapping ($\Delta T \approx 0$) to achieve low single-step loss while masking trajectory drift.
 
-The true performance differences emerge in the autoregressive rollout, where self-generated predictions are fed recursively. In this setting, the PINN outperforms the baseline MLP on all trajectory-level metrics. Specifically, the PINN reduces the rollout MAE by 31.2\% (from 0.0170$^\circ$C to 0.0117$^\circ$C) and the maximum rollout error by 65.6\% (from 0.2474$^\circ$C to 0.0851$^\circ$C). This demonstrates the regularizing effect of the physical constraints in maintaining trajectory stability.
+The performance differences become apparent during multi-step autoregressive rollout. The PINN achieves lower rollout error across all metrics, reducing rollout MAE by 31.2\% (from 0.0170$^\circ$C to 0.0117$^\circ$C) and maximum rollout error by 65.6\% (from 0.2474$^\circ$C to 0.0851$^\circ$C). This improvement indicates that combining physics regularization with input noise injection improves trajectory stability.
 
 \subsection{Physical Parameter Learning}
-During PINN training, the convective heat transfer coefficient ($hA$) is learned dynamically in parallel with the network weights. Initialized at a default value of $hA_{\text{init}} = 0.1$ W/K, the softplus-constrained parameter converges over epochs to its final value:
+During PINN training, the convective heat transfer coefficient ($hA$) is optimized alongside network weights. Starting from an initial value of $hA_{\text{init}} = 0.1$~W/K, the softplus-constrained parameter increases progressively across epochs to its final value in \eqref{eq:learned_ha}:
 \begin{equation}
 hA_{\text{final}} \approx 36.49 \text{ W/K}
 \label{eq:learned_ha}
 \end{equation}
-This convergence is shown in the history log, where $hA$ rises from 0.855 W/K at epoch 1 to 36.490 W/K at epoch 18. This learned value is physically consistent with typical forced convection cooling setups for EV battery packs.
+As logged in the training history, $hA$ rises from 0.855~W/K at epoch 1 to 36.490~W/K at early stopping (epoch 18). Because the target data represents casing surface temperature from a dual-node Simulink model, this estimated value corresponds to an \textbf{effective convective heat transfer parameter} consistent with the assumed single-node thermal model and surface cooling dynamics.
 
-\subsection{Visual Analysis of Results}
-The models are visually evaluated using the generated figures in the repository:
+\subsection{Computational Performance and Efficiency}
+To assess real-time execution suitability, performance metrics recorded during training and rollout evaluation are summarized as follows:
 \begin{itemize}
-    \item \textbf{Training Convergence:} The training loss curves show stable log-scale decay. The baseline MLP convergence is plotted in Fig. \ref{fig:baseline_loss}. The PINN convergence breakdown (total loss, data loss, and physics loss scaled by $\lambda_{\text{phys}} = 0.01$) is shown in Fig. \ref{fig:pinn_loss}, indicating a cooperative optimization landscape without parameter conflicts.
-    \item \textbf{Trajectory Tracking:} The trajectory comparison plots show predicted temperature tracking the ground truth over 150,000 time steps of the WLTP2 drive cycle. The baseline MLP rollout is shown in Fig. \ref{fig:baseline_rollout}, exhibiting slight drift during peaks. The PINN rollout is shown in Fig. \ref{fig:pinn_rollout}, tracking the thermal transients with high fidelity.
-    \item \textbf{Physics Residual Distribution:} The physics residual distribution histogram (Fig. \ref{fig:pinn_residual}) shows that the residual of equation \eqref{eq:residual} is zero-centered and tightly bounded ($\mu \approx 0.00$ W, standard deviation $\sigma < 0.05$ W), confirming that the network adheres to the conservation of energy.
+    \item \textbf{DataLoader Throughput:} Benchmarked at 3,891.03 samples/second during dataset loading setup (\texttt{num\_workers=4}, \texttt{prefetch\_factor=2}).
+    \item \textbf{Training Throughput:} Training execution reached 209,361 to 254,599 samples/second on an NVIDIA RTX 4060 Laptop GPU.
+    \item \textbf{Training Duration:} Early stopping halted training at epoch 18, requiring 259 to 317 seconds per epoch (total training time of approximately 1.4 hours).
+    \item \textbf{Memory Footprint:} Under PyTorch AMP (fp16) and TF32 execution, peak GPU memory allocation reached 21.3~MB (out of 8~GB VRAM).
+    \item \textbf{Rollout Evaluation Speed:} Autoregressive multi-step rollout achieved an average throughput of 2,100 to 2,200 evaluation steps/second per test cycle file, evaluating each 150,000-step dynamic drive cycle in approximately 68 to 84 seconds.
+\end{itemize}
+
+\subsection{Visual Analysis of Trajectories}
+The qualitative performance of the models is visualized in Figs. \ref{fig:baseline_loss}--\ref{fig:pinn_residual}:
+\begin{itemize}
+    \item \textbf{Training Loss Convergence:} Fig. \ref{fig:baseline_loss} shows baseline MLP loss convergence. Fig. \ref{fig:pinn_loss} breaks down PINN total loss, data loss, and physics loss ($\lambda_{\text{phys}} = 0.01$), displaying smooth joint convergence without gradient interference.
+    \item \textbf{Trajectory Tracking:} Autoregressive rollout temperature predictions over a 150,000-step test cycle are shown for the baseline MLP in Fig. \ref{fig:baseline_rollout} and for the PINN in Fig. \ref{fig:pinn_rollout}. The PINN trajectory displays reduced drift during dynamic load transitions.
+    \item \textbf{Physics Residual Distribution:} The rate-of-change physics residual distribution (Fig. \ref{fig:pinn_residual}) is zero-centered ($\mu \approx 0.00$~W, $\sigma < 0.05$~W), confirming agreement with the regularizing ODE constraint.
 \end{itemize}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\linewidth]{figures/baseline_loss.png}
-\caption{Baseline MLP loss convergence over 100 training epochs.}
+\caption{Baseline MLP loss convergence over training epochs.}
 \label{fig:baseline_loss}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\linewidth]{figures/loss.png}
-\caption{PINN total loss, data loss, and physics loss convergence breakdown.}
+\caption{PINN loss convergence breakdown (total loss, data loss, and physics loss).}
 \label{fig:pinn_loss}
 \end{figure}
 
@@ -72,6 +82,6 @@ The models are visually evaluated using the generated figures in the repository:
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.95\linewidth]{figures/residual.png}
-\caption{Probability density distribution of the PINN physics rate-of-change residual in the test set.}
+\caption{Probability density distribution of the PINN physics residual in physical units.}
 \label{fig:pinn_residual}
 \end{figure}

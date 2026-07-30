@@ -26,21 +26,21 @@ The dataset is generated from a high-fidelity Simulink electro-thermal model sim
 \end{figure}
 
 \subsection{Lumped Battery Thermal Model}
-The physics constraints embedded within the PINN are derived from the governing ordinary differential equation (ODE) of a lumped-parameter thermal model \cite{bernardi1985general}. The cell energy balance is formulated as:
+The physics constraints embedded within the PINN are derived from the governing ordinary differential equation (ODE) of a lumped-parameter thermal model \cite{bernardi1985general}. The cell energy balance is formulated in \eqref{eq:governing} as:
 \begin{equation}
 m C_p \frac{dT}{dt} = P_{\text{loss}} - Q_{\text{loss}}
 \label{eq:governing}
 \end{equation}
 where $m$ is the mass of the battery cell (kg), $C_p$ is the specific heat capacity (J/kg/K), $T$ is the cell temperature (K), $P_{\text{loss}}$ is the heat generation rate (W) due to internal Joule heating and polarization losses, and $Q_{\text{loss}}$ is the heat transfer rate to the ambient environment (W).
 
-Assuming Newton's law of cooling for convection, the heat loss is expressed as:
+Assuming Newton's law of cooling for convection, the heat loss $Q_{\text{loss}}$ is expressed in \eqref{eq:convection} as:
 \begin{equation}
 Q_{\text{loss}} = hA (T - T_{\text{amb}})
 \label{eq:convection}
 \end{equation}
 where $hA$ is the convective heat transfer coefficient multiplied by the cell surface area (W/K), and $T_{\text{amb}}$ is the ambient temperature (K). 
 
-To account for cell scaling variations across different experiments in the dataset, we incorporate a dimensionless scaling factor, $\text{MassScale}$. The physical rate of temperature change is modeled as:
+To account for cell scaling variations across different experiments in the dataset, we incorporate a dimensionless scaling factor, $\text{MassScale}$. Combining \eqref{eq:governing} and \eqref{eq:convection}, the physical rate of temperature change is modeled in \eqref{eq:rate_of_change} as:
 \begin{equation}
 \frac{dT}{dt} = \frac{P_{\text{loss}} - hA (T - T_{\text{amb}})}{m C_p \cdot \text{MassScale}}
 \label{eq:rate_of_change}
@@ -75,12 +75,12 @@ In this study, the base thermal capacity is set to $m C_p = 900.0$ J/K, which ma
 \end{figure}
 
 \subsection{Baseline Multi-Layer Perceptron (MLP)}
-The baseline neural network is a fully connected Multi-Layer Perceptron designed to map the battery electro-thermal features to the temperature change. The model inputs are represented by the feature vector:
+The baseline neural network is a fully connected Multi-Layer Perceptron designed to map the battery electro-thermal features to the temperature change. The model inputs are represented by the feature vector in \eqref{eq:features}:
 \begin{equation}
 \mathbf{x}_t = [T_t, I_t, V_t, \text{SOC}_t, P_{\text{loss}, t}, T_{\text{amb}, t}, \text{MassScale}_t]^T
 \label{eq:features}
 \end{equation}
-where $I_t$ is current, $V_t$ is voltage, and $\text{SOC}_t$ is state-of-charge. The target output is the physical temperature delta:
+where $I_t$ is current, $V_t$ is voltage, and $\text{SOC}_t$ is state-of-charge. The target output is the physical temperature delta in \eqref{eq:target}:
 \begin{equation}
 y_t = \Delta T_t = T_{t+1} - T_t
 \label{eq:target}
@@ -93,48 +93,48 @@ The network architecture is defined by the following layer structure:
 \mathbf{h}_3 &= \text{ReLU}(\mathbf{W}_3 \mathbf{h}_2 + \mathbf{b}_3) \quad (\mathbf{W}_3 \in \mathbb{R}^{32 \times 64}) \\
 \Delta \hat{T}_t &= \mathbf{W}_4 \mathbf{h}_3 + \mathbf{b}_4 \quad (\mathbf{W}_4 \in \mathbb{R}^{1 \times 32})
 \end{align*}
-The network is optimized using the Mean Squared Error (MSE) data loss:
+The network is optimized using the Mean Squared Error (MSE) data loss in \eqref{eq:loss_data}:
 \begin{equation}
 \mathcal{L}_{\text{data}} = \frac{1}{N} \sum_{i=1}^N \left( \Delta T_i - \Delta \hat{T}_i \right)^2
 \label{eq:loss_data}
 \end{equation}
 
 \subsection{Physics-Informed Neural Network (PINN) Formulation}
-The PINN shares the exact architectural design of the baseline MLP but incorporates the governing physical equation \eqref{eq:rate_of_change} in its objective function. This enforces physical consistency through a composite loss function:
+The PINN shares the architectural design of the baseline MLP but incorporates the governing physical ODE equation \eqref{eq:rate_of_change} as a soft regularization term in its objective function. This regularizes the neural network search space toward thermodynamically plausible solutions via a composite loss function in \eqref{eq:loss_total}:
 \begin{equation}
 \mathcal{L}_{\text{total}} = \mathcal{L}_{\text{data}} + \lambda_{\text{phys}} \mathcal{L}_{\text{physics}}
 \label{eq:loss_total}
 \end{equation}
 where $\lambda_{\text{phys}}$ is a regularization weight, set to $0.01$ in our training configuration.
 
-The physics loss term measures the residual of the thermal ODE over the batch. To compute the derivative, the predicted temperature delta in scaled units is first inverted back to the physical scale using the saved target scaler parameters:
+The physics loss term measures the residual of the lumped single-node thermal ODE over each mini-batch. To evaluate the residual, the predicted temperature delta in scaled units is inverted back to physical units via \eqref{eq:unscale}:
 \begin{equation}
 \Delta \hat{T}_i^{\text{phys}} = \Delta \hat{T}_i \cdot \sigma_y + \mu_y
 \label{eq:unscale}
 \end{equation}
-where $\mu_y$ and $\sigma_y$ are the mean and standard deviation of the targets in the training dataset.
+where $\mu_y$ and $\sigma_y$ are the empirical target mean and standard deviation.
 
-The physics residual $R_i$ for sample $i$ is calculated in physical units (K/s) as:
+The physics residual $R_i$ for sample $i$ is calculated in physical units (K/s) in \eqref{eq:residual} as:
 \begin{equation}
 R_i = \frac{\Delta \hat{T}_i^{\text{phys}}}{dt_i} - \frac{P_{\text{loss}, i} - hA (T_i - T_{\text{amb}, i})}{m C_p \cdot \text{MassScale}_i}
 \label{eq:residual}
 \end{equation}
-where $T_i$, $P_{\text{loss}, i}$, $T_{\text{amb}, i}$, and $\text{MassScale}_i$ are inputs in physical (unscaled) units, and $dt_i$ is the time step size in seconds. The physics loss is then computed as the mean squared residual:
+where $T_i$, $P_{\text{loss}, i}$, $T_{\text{amb}, i}$, and $\text{MassScale}_i$ are unscaled inputs, and $dt_i$ is the time step size in seconds. The physics regularization loss is computed in \eqref{eq:loss_physics} as:
 \begin{equation}
 \mathcal{L}_{\text{physics}} = \frac{1}{N} \sum_{i=1}^N R_i^2
 \label{eq:loss_physics}
 \end{equation}
 
 \subsection{Trainable Parameter Parameterization}
-The convective heat transfer coefficient, $hA$, is treated as a trainable model parameter. Because a negative value of $hA$ would represent physical heating rather than cooling, the parameter must be strictly positive. Standard clamping during optimization halts gradient flow when the parameter hits the boundary. To avoid this, we parameterize $hA$ using a raw real-valued parameter $hA_{\text{raw}}$ passed through a softplus function:
+The convective heat transfer coefficient, $hA$, is treated as a trainable model parameter. Because a negative value of $hA$ would represent non-physical environmental heating when $T > T_{\text{amb}}$, the parameter is constrained to positive values. Simple parameter clamping halts gradient flow when hitting the boundary ($hA \to 0$). To maintain continuous gradient updates, we parameterize $hA$ using a raw real-valued variable $hA_{\text{raw}}$ passed through a softplus activation in \eqref{eq:softplus}:
 \begin{equation}
 hA = \text{softplus}(hA_{\text{raw}}) = \ln(1 + e^{hA_{\text{raw}}})
 \label{eq:softplus}
 \end{equation}
 
-To initialize $hA$ at a realistic starting value of $hA_{\text{init}} = 0.1$ W/K, the raw parameter is initialized as:
+To initialize $hA$ at a baseline value of $hA_{\text{init}} = 0.1$ W/K, $hA_{\text{raw}}$ is initialized via \eqref{eq:raw_init} as:
 \begin{equation}
 hA_{\text{raw, init}} = \ln(e^{hA_{\text{init}}} - 1)
 \label{eq:raw_init}
 \end{equation}
-This formulation ensures that $hA$ remains positive throughout training while allowing gradient backpropagation to update it continuously.
+This formulation guarantees that $hA > 0$ throughout training. Because the training targets reflect cell surface temperature from a dual-node Simulink simulation, the learned parameter $hA$ represents an \textbf{effective convective heat transfer parameter} within the single-node ODE approximation.
