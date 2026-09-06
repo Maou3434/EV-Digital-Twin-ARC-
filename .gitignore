@@ -137,7 +137,19 @@ PAPER/*.out
 PAPER/*.pdf
 PAPER/*.log
 
+REPORT/*.aux
+REPORT/*.bbl
+REPORT/*.blg
+REPORT/*.fdb_latexmk
+REPORT/*.fls
+REPORT/*.out
+REPORT/*.log
+REPORT/*.lof
+REPORT/*.lot
+REPORT/*.toc
+
 # Node.js
 node_modules/
+
 
 

@@ -13,7 +13,6 @@ Evaluation Metric & Baseline MLP & Physics-Informed NN \\
 \midrule
 Single-step MAE ($^\circ$C) & $4.8978 \times 10^{-7}$ & $3.3783 \times 10^{-7}$ \\
 Single-step RMSE ($^\circ$C) & $8.6218 \times 10^{-7}$ & $8.9419 \times 10^{-7}$ \\
-Single-step $R^2$ Score & $1.0000$ & $1.0000$ \\
 Rollout MAE ($^\circ$C) & $0.0170$ & $0.0117$ \\
 Rollout RMSE ($^\circ$C) & $0.0211$ & $0.0143$ \\
 Maximum Rollout Error ($^\circ$C) & $0.2474$ & $0.0851$ \\
@@ -21,7 +20,7 @@ Maximum Rollout Error ($^\circ$C) & $0.2474$ & $0.0851$ \\
 \end{tabular}
 \end{table}
 
-Both models achieve low single-step-ahead prediction errors and $R^2$ scores near unity. At $dt = 0.01$~s, step-to-step temperature changes are small, enabling an identity mapping ($\Delta T \approx 0$) to achieve low single-step loss while masking trajectory drift.
+Both models achieve low single-step-ahead prediction errors. At $dt = 0.01$~s, step-to-step temperature changes are small, enabling an identity mapping ($\Delta T \approx 0$) to achieve low single-step loss while masking trajectory drift.
 
 The performance differences become apparent during multi-step autoregressive rollout. The PINN achieves lower rollout error across all metrics, reducing rollout MAE by 31.2\% (from 0.0170$^\circ$C to 0.0117$^\circ$C) and maximum rollout error by 65.6\% (from 0.2474$^\circ$C to 0.0851$^\circ$C). This improvement indicates that combining physics regularization with input noise injection improves trajectory stability.
 
